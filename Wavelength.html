@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>પ્રકાશસંશ્લેષણ પ્રયોગ - પ્રકાશની તરંગલંબાઈ</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        
+        #canvas-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1e293b 0%, #020617 100%);
+            z-index: -1;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            pointer-events: auto; 
+        }
+
+        h2 { margin-top: 0; color: #0f172a; font-size: 18px; text-align: center; border-bottom: 2px solid #cbd5e1; padding-bottom: 10px;}
+        
+        #controls-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 95%;
+            max-width: 600px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        button {
+            padding: 12px 8px;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.2s;
+            flex: 1 1 20%;
+            text-align: center;
+        }
+        
+        /* રંગો મુજબ બટન સ્ટાઈલ */
+        #btn-white { background-color: #94a3b8; color: black; }
+        #btn-red { background-color: #ef4444; }
+        #btn-green { background-color: #22c55e; }
+        #btn-blue { background-color: #3b82f6; }
+
+        button:hover { transform: scale(1.05); filter: brightness(1.1); }
+        
+        #results-panel {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 500px;
+        }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; text-align: center; background: white; }
+        th, td { border: 1px solid #cbd5e1; padding: 10px; font-size: 14px; }
+        th { background-color: #f1f5f9; }
+        .current-row { background-color: #fef08a !important; font-weight: bold; }
+
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-container">
+        <div class="panel" id="results-panel">
+            <h2>📊 અવલોકન કોઠો (પ્રાયોગિક પરિણામ)</h2>
+            <table id="resultTable">
+                <tr>
+                    <th>ક્રમ</th>
+                    <th>સેલોફેન પેપરનો રંગ</th>
+                    <th>પરપોટાની સંખ્યા (O₂)</th>
+                </tr>
+                <tr id="row-white"><td>૧</td><td>સામાન્ય પ્રકાશ</td><td id="val-white">૨૨</td></tr>
+                <tr id="row-red"><td>૨</td><td>લાલ પ્રકાશ</td><td id="val-red">-</td></tr>
+                <tr id="row-green"><td>૩</td><td>લીલો પ્રકાશ</td><td id="val-green">-</td></tr>
+                <tr id="row-blue"><td>૪</td><td>વાદળી પ્રકાશ</td><td id="val-blue">-</td></tr>
+            </table>
+        </div>
+
+        <div class="panel" id="controls-panel">
+            <button id="btn-white" onclick="changeLight('white', 0xffffff, 22)">સામાન્ય</button>
+            <button id="btn-red" onclick="changeLight('red', 0xff0000, 35)">લાલ ફિલ્ટર</button>
+            <button id="btn-green" onclick="changeLight('green', 0x00ff00, 5)">લીલો ફિલ્ટર</button>
+            <button id="btn-blue" onclick="changeLight('blue', 0x0000ff, 28)">વાદળી ફિલ્ટર</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 3D SCENE SETUP ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        camera.position.set(0, 2, 8);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const spotLight = new THREE.SpotLight(0xffffff, 1);
+        spotLight.position.set(0, 10, 0);
+        scene.add(spotLight);
+
+        // Materials
+        let waterMat = new THREE.MeshPhysicalMaterial({ color: 0x3b82f6, transmission: 0.7, transparent: true, opacity: 0.4 });
+        const plantMat = new THREE.MeshStandardMaterial({ color: 0x166534 });
+
+        function createGlass(geo) {
+            const mat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 0.9, transparent: true, opacity: 0.2, roughness: 0 });
+            const mesh = new THREE.Mesh(geo, mat);
+            const edges = new THREE.EdgesGeometry(geo);
+            mesh.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true })));
+            return mesh;
+        }
+
+        // Setup Glassware
+        const beaker = createGlass(new THREE.CylinderGeometry(2.5, 2.5, 5, 32));
+        scene.add(beaker);
+
+        const water = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 4.5, 32), waterMat);
+        water.position.y = -0.2;
+        scene.add(water);
+
+        const funnel = createGlass(new THREE.ConeGeometry(2, 2, 32));
+        funnel.position.y = -1.2;
+        scene.add(funnel);
+
+        const testTube = createGlass(new THREE.CylinderGeometry(0.4, 0.4, 4, 32));
+        testTube.position.y = 1.5;
+        scene.add(testTube);
+
+        // Plant (Hydrilla)
+        const plant = new THREE.Group();
+        for(let i=0; i<15; i++) {
+            const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), plantMat);
+            leaf.position.set((Math.random()-0.5)*1.5, -2, (Math.random()-0.5)*1.5);
+            leaf.rotation.x = Math.random() * Math.PI;
+            plant.add(leaf);
+        }
+        scene.add(plant);
+
+        // --- BUBBLE LOGIC ---
+        let bubbleCount = 22;
+        const bubbles = [];
+        const bubbleGeo = new THREE.SphereGeometry(0.05, 8, 8);
+        const bubbleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+
+        for(let i=0; i<100; i++) {
+            const b = new THREE.Mesh(bubbleGeo, bubbleMat);
+            b.position.set(0, -1.5, 0);
+            b.visible = false;
+            scene.add(b);
+            bubbles.push({ mesh: b, speed: 0.01 + Math.random()*0.02 });
+        }
+
+        // --- CHANGE LIGHT FUNCTION ---
+        function changeLight(type, colorCode, count) {
+            // પાણી અને પ્રકાશનો રંગ બદલો
+            water.material.color.setHex(colorCode);
+            spotLight.color.setHex(colorCode);
+            bubbleCount = count;
+
+            // ટેબલ અપડેટ કરો
+            document.querySelectorAll('tr').forEach(r => r.classList.remove('current-row'));
+            document.getElementById('row-' + type).classList.add('current-row');
+            document.getElementById('val-' + type).innerText = count;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            for(let i=0; i<100; i++) {
+                if(i < bubbleCount) {
+                    bubbles[i].mesh.visible = true;
+                    bubbles[i].mesh.position.y += bubbles[i].speed;
+                    if(bubbles[i].mesh.position.y > 3.5) bubbles[i].mesh.position.y = -1.5;
+                } else {
+                    bubbles[i].mesh.visible = false;
+                }
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
