@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photosynthesis 3D Model with Graph</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        #canvas-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            /* Yahan background ko dark se light grey/white gradient kar diya gaya hai */
+            background: radial-gradient(circle at center, #ffffff 0%, #e2e8f0 100%);
+            z-index: -1;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; 
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15); /* Shadow ko thoda light kiya hai */
+            pointer-events: auto; 
+        }
+
+        h2 { margin-top: 0; color: #0f172a; font-size: 16px; text-align: center; border-bottom: 2px solid #cbd5e1; padding-bottom: 10px;}
+        
+        /* Bottom Controls */
+        #controls-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 500px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button {
+            padding: 10px 5px;
+            background-color: #0ea5e9;
+            color: white;
+            border: 1px solid #0284c7;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            transition: all 0.2s;
+            flex: 1 1 30%; 
+            text-align: center;
+        }
+        button:hover:not(:disabled) { background-color: #0284c7; transform: translateY(-2px); }
+        button:disabled { background-color: #cbd5e1; color: #64748b; cursor: not-allowed; border-color: #94a3b8; }
+        
+        .reset-btn { background-color: #e11d48; border-color: #be123c; flex: 1 1 100%; margin-top: 5px; padding: 12px;}
+        .reset-btn:hover { background-color: #be123c; }
+
+        /* Results Panel with Scrollbar for Mobile */
+        #results-panel {
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 450px;
+            max-height: 80vh;
+            overflow-y: auto;
+            display: none; 
+            animation: popUp 0.5s ease-out forwards;
+        }
+
+        @keyframes popUp {
+            from { opacity: 0; transform: translate(-50%, -40%) scale(0.9); }
+            to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; text-align: center; }
+        th, td { border: 1px solid #cbd5e1; padding: 8px; font-size: 13px; color: #1e293b; }
+        th { background-color: #f1f5f9; font-weight: bold; }
+        tr:nth-child(even) { background-color: #f8fafc; }
+        .highlight { background-color: #dcfce7 !important; font-weight: bold; color: #166534;}
+        
+        /* Canvas for Chart */
+        #chart-container {
+            margin-top: 20px;
+            width: 100%;
+            height: 250px;
+        }
+
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-container">
+        <div class="panel" id="results-panel">
+            <h2>📊 Final Observation & Graph</h2>
+            <table id="resultTable">
+                <tr>
+                    <th>No.</th>
+                    <th>માત્રા (NaHCO₃)</th>
+                    <th>O₂ પરપોટા (Bubbles)</th>
+                </tr>
+                <tr id="row-0">
+                    <td>0</td>
+                    <td>0 mg (Plain Water)</td>
+                    <td>12</td>
+                </tr>
+            </table>
+            
+            <div id="chart-container">
+                <canvas id="bubbleChart"></canvas>
+            </div>
+        </div>
+
+        <div class="panel" id="controls-panel">
+            <button id="btn-1" onclick="addChemical(1, 10, 28, 1.2)">+ 10 mg</button>
+            <button id="btn-2" onclick="addChemical(2, 20, 45, 1.5)" disabled>+ 20 mg</button>
+            <button id="btn-3" onclick="addChemical(3, 30, 60, 2.0)" disabled>+ 30 mg (Peak)</button>
+            <button id="btn-4" onclick="addChemical(4, 40, 35, 1.4)" disabled>+ 40 mg (Decrease)</button>
+            <button id="btn-5" onclick="addChemical(5, 50, 15, 1.0)" disabled>+ 50 mg</button>
+            <button class="reset-btn" onclick="resetExperiment()">🔄 Reset Experiment</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 3D SCENE SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        camera.position.set(0, 1, 8);
+        controls.enablePan = false;
+        controls.update();
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xfffaee, 1.2);
+        dirLight.position.set(5, 10, 7);
+        scene.add(dirLight);
+
+        // Materials
+        const waterMat = new THREE.MeshPhysicalMaterial({ color: 0x3b82f6, transmission: 0.6, opacity: 0.5, transparent: true });
+
+        function createVisibleGlass(geometry) {
+            const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xbae6fd, transmission: 0.5, opacity: 0.6, transparent: true, side: THREE.DoubleSide, roughness: 0.1 });
+            const mesh = new THREE.Mesh(geometry, glassMat);
+            const edges = new THREE.EdgesGeometry(geometry);
+            // Light background ke liye lines ko thoda dark blue/grey kar diya hai taaki visible rahe
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.8 }));
+            mesh.add(line);
+            return mesh;
+        }
+
+        // Models 
+        const beaker = createVisibleGlass(new THREE.CylinderGeometry(2.5, 2.5, 5, 32, 1, true));
+        scene.add(beaker);
+        
+        const water = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 4.5, 32), waterMat);
+        water.position.y = -0.25;
+        scene.add(water);
+
+        const funnelBase = createVisibleGlass(new THREE.ConeGeometry(1.8, 1.5, 32, 1, true));
+        funnelBase.position.y = -1;
+        scene.add(funnelBase);
+
+        const funnelNeck = createVisibleGlass(new THREE.CylinderGeometry(0.25, 0.25, 2, 32, 1, true));
+        funnelNeck.position.y = 0.5;
+        scene.add(funnelNeck);
+
+        const testTube = createVisibleGlass(new THREE.CylinderGeometry(0.35, 0.35, 3.5, 32, 1, true));
+        testTube.position.y = 2.25;
+        scene.add(testTube);
+        
+        const testTubeTop = createVisibleGlass(new THREE.SphereGeometry(0.35, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2));
+        testTubeTop.position.y = 4;
+        scene.add(testTubeTop);
+
+        // --- NAYA 3D HYDRILLA PLANT CODE (Without External File) ---
+        const plantGroup = new THREE.Group();
+        const leafMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.8 }); 
+
+        // Hydrilla ki 5 daaliyan (stems)
+        for (let s = 0; s < 5; s++) {
+            const stemGroup = new THREE.Group();
+            const stemHeight = 1.8 + Math.random() * 1.0; 
+            
+            // Daali (Stem)
+            const stemGeo = new THREE.CylinderGeometry(0.02, 0.04, stemHeight, 8);
+            const stem = new THREE.Mesh(stemGeo, leafMat);
+            stem.position.y = stemHeight / 2;
+            stemGroup.add(stem);
+
+            // Patte (Leaves) - Hydrilla jaise patle aur nukile
+            const leafGeo = new THREE.ConeGeometry(0.04, 0.3, 4); 
+            leafGeo.translate(0, 0.15, 0); 
+            leafGeo.rotateX(Math.PI / 2.2); 
+            
+            const numWhorls = 12; 
+            for (let i = 0; i < numWhorls; i++) {
+                const yPos = (i / numWhorls) * stemHeight + 0.1;
+                const leavesPerWhorl = 4; 
+                for (let j = 0; j < leavesPerWhorl; j++) {
+                    const leaf = new THREE.Mesh(leafGeo, leafMat);
+                    leaf.position.y = yPos;
+                    leaf.rotation.y = (Math.PI * 2 / leavesPerWhorl) * j + (i * 0.5); 
+                    stemGroup.add(leaf);
+                }
+            }
+            
+            // In daaliyon ko Beaker ke andar set kiya (Funnel ke neeche)
+            stemGroup.position.set((Math.random() - 0.5) * 1.0, -2.2, (Math.random() - 0.5) * 1.0);
+            stemGroup.rotation.z = (Math.random() - 0.5) * 0.3; 
+            stemGroup.rotation.x = (Math.random() - 0.5) * 0.3;
+            
+            plantGroup.add(stemGroup);
+        }
+        scene.add(plantGroup);
+        // ------------------------------------------
+
+        // --- BUBBLE SYSTEM ---
+        const maxBubbles = 100;
+        let activeBubbleCount = 12; 
+        let bubbleSpeedMultiplier = 1; 
+        const bubbles = [];
+        const bubbleGeo = new THREE.SphereGeometry(0.06, 8, 8);
+        const bubbleMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+        for(let i = 0; i < maxBubbles; i++) {
+            const bubble = new THREE.Mesh(bubbleGeo, bubbleMat);
+            bubble.position.set((Math.random() - 0.5) * 0.3, -1.5 - Math.random() * 2, (Math.random() - 0.5) * 0.3);
+            bubble.visible = false; 
+            scene.add(bubble);
+            bubbles.push({ mesh: bubble, speed: 0.015 + Math.random() * 0.01 });
+        }
+
+        // --- EXPERIMENT DATA & GRAPH LOGIC ---
+        let graphLabels = ['0'];
+        let graphData = [12];
+        let myChart = null;
+
+        function renderGraph() {
+            const ctx = document.getElementById('bubbleChart').getContext('2d');
+            
+            if (myChart) { myChart.destroy(); } 
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: graphLabels,
+                    datasets: [{
+                        label: 'O₂ પરપોટા (Bubbles)',
+                        data: graphData,
+                        borderColor: '#0ea5e9',
+                        backgroundColor: 'rgba(14, 165, 233, 0.2)',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#e11d48',
+                        pointRadius: 5,
+                        fill: true,
+                        tension: 0.4 
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'NaHCO₃ (mg)' } },
+                        y: { title: { display: true, text: 'No. of Bubbles' }, min: 0 }
+                    }
+                }
+            });
+        }
+
+        function addChemical(stepId, mgAmount, resultingBubbles, speedMulti) {
+            activeBubbleCount = resultingBubbles;
+            bubbleSpeedMultiplier = speedMulti; 
+            
+            const table = document.getElementById("resultTable");
+            const newRow = table.insertRow(-1);
+            newRow.id = "row-" + stepId;
+            newRow.className = "highlight";
+            newRow.innerHTML = `<td>${stepId}</td><td>${mgAmount} mg</td><td>${resultingBubbles}</td>`;
+
+            graphLabels.push(mgAmount.toString());
+            graphData.push(resultingBubbles);
+
+            const btn = document.getElementById(`btn-${stepId}`);
+            btn.disabled = true;
+            btn.innerText = `✅ ${mgAmount}mg`;
+            btn.style.backgroundColor = "#16a34a"; 
+            btn.style.borderColor = "#15803d";
+            btn.style.color = "white";
+
+            if(stepId < 5) {
+                document.getElementById(`btn-${stepId + 1}`).disabled = false;
+            } else {
+                setTimeout(() => {
+                    document.getElementById('results-panel').style.display = 'block';
+                    renderGraph(); 
+                }, 800); 
+            }
+        }
+
+        function resetExperiment() {
+            activeBubbleCount = 12;
+            bubbleSpeedMultiplier = 1;
+            
+            graphLabels = ['0'];
+            graphData = [12];
+
+            document.getElementById('results-panel').style.display = 'none';
+            const table = document.getElementById("resultTable");
+            while(table.rows.length > 2) { table.deleteRow(-1); } 
+
+            const btnLabels = ["+ 10 mg", "+ 20 mg", "+ 30 mg (Peak)", "+ 40 mg (Decrease)", "+ 50 mg"];
+            for(let i=1; i<=5; i++) {
+                const btn = document.getElementById(`btn-${i}`);
+                btn.innerText = btnLabels[i-1];
+                btn.disabled = (i !== 1); 
+                btn.style.backgroundColor = ""; 
+                btn.style.borderColor = "";
+                btn.style.color = "";
+            }
+        }
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            for(let i = 0; i < maxBubbles; i++) {
+                const b = bubbles[i];
+                if (i < activeBubbleCount) {
+                    b.mesh.visible = true;
+                    b.mesh.position.y += b.speed * bubbleSpeedMultiplier;
+                    b.mesh.position.x += (Math.random() - 0.5) * 0.01;
+                    
+                    if (b.mesh.position.y > 3.8) {
+                        b.mesh.position.y = -1.5;
+                        b.mesh.position.x = (Math.random() - 0.5) * 0.3;
+                    }
+                } else {
+                    b.mesh.visible = false;
+                }
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

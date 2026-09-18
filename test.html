@@ -1,0 +1,41 @@
+        // --- NAYA 3D PLANT MODEL CODE (Without External File) ---
+        const plantGroup = new THREE.Group();
+        const leafMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.8 }); // Bright Green Color
+
+        // Hydrilla ki 4-5 daaliyan (stems) banate hain
+        for (let s = 0; s < 5; s++) {
+            const stemGroup = new THREE.Group();
+            const stemHeight = 1.8 + Math.random() * 1.0; // Daali ki height
+            
+            // Daali (Stem) banai
+            const stemGeo = new THREE.CylinderGeometry(0.02, 0.04, stemHeight, 8);
+            const stem = new THREE.Mesh(stemGeo, leafMat);
+            stem.position.y = stemHeight / 2;
+            stemGroup.add(stem);
+
+            // Patte (Leaves) - Hydrilla jaise patle aur nukile
+            const leafGeo = new THREE.ConeGeometry(0.04, 0.3, 4); 
+            leafGeo.translate(0, 0.15, 0); 
+            leafGeo.rotateX(Math.PI / 2.2); 
+            
+            const numWhorls = 12; // Daali par kitni jagah patte honge
+            for (let i = 0; i < numWhorls; i++) {
+                const yPos = (i / numWhorls) * stemHeight + 0.1;
+                const leavesPerWhorl = 4; // Ek jagah se 4 patte nikalenge
+                for (let j = 0; j < leavesPerWhorl; j++) {
+                    const leaf = new THREE.Mesh(leafGeo, leafMat);
+                    leaf.position.y = yPos;
+                    leaf.rotation.y = (Math.PI * 2 / leavesPerWhorl) * j + (i * 0.5); // Spiral design
+                    stemGroup.add(leaf);
+                }
+            }
+            
+            // In daaliyon ko Beaker ke andar set kiya
+            stemGroup.position.set((Math.random() - 0.5) * 1.5, -2.2, (Math.random() - 0.5) * 1.5);
+            stemGroup.rotation.z = (Math.random() - 0.5) * 0.3; // Thoda tehra kiya natural look ke liye
+            stemGroup.rotation.x = (Math.random() - 0.5) * 0.3;
+            
+            plantGroup.add(stemGroup);
+        }
+        scene.add(plantGroup);
+        // ------------------------------------------
